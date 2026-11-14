@@ -7,13 +7,14 @@ from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs
 from uuid import uuid4
 
 import stripe
 from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -322,6 +323,24 @@ class PaymentLifecycleTests(TestCase):
         self.assertEqual(TopUp.objects.filter(usuario=self.user).count(), 1)
         self.assert_no_credit()
 
+    def test_retry_of_a_terminal_topup_returns_its_saved_status_without_stripe(self):
+        for expected in ("failed", "succeeded"):
+            with self.subTest(status=expected):
+                topup = self.make_topup()
+                kind = "payment_intent.succeeded" if expected == "succeeded" else "payment_intent.payment_failed"
+                self.assertEqual(self.webhook(self.event(topup, kind=kind)).status_code, 200)
+                self.client_factory.reset_mock()
+                self.stripe_client.reset_mock()
+                payload = {"amount": "500.00", "card_id": str(self.card.pk), "request_id": str(topup.request_id)}
+                response = self.post("/api/funds/", payload)
+                self.assertIn(response.status_code, (200, 201))
+                self.assertEqual(response.data["topup"]["id"], str(topup.pk))
+                self.assertEqual(response.data["topup"]["status"], expected)
+                self.assertFalse(response.data.get("client_secret"))
+                self.client_factory.assert_not_called()
+                self.stripe_client.v1.payment_intents.retrieve.assert_not_called()
+                self.stripe_client.v1.payment_intents.create.assert_not_called()
+
     def test_network_timeout_retry_reuses_the_durable_topup_request(self):
         self.stripe_client.v1.payment_intents.create.side_effect = stripe.APIConnectionError("Simulated timeout")
         failed, payload = self.create_topup()
@@ -371,6 +390,7 @@ class PaymentLifecycleTests(TestCase):
         variants = (
             {"amount": 49999}, {"amount_received": 49999}, {"currency": "usd"}, {"customer": "cus_other"},
             {"payment_method": "pm_other"}, {"livemode": True}, {"metadata": {"topup_id": str(uuid4())}},
+            {"payment_method": None, "last_payment_error": {"payment_method": {"id": self.card.stripe_payment_method_id}}},
             {"id": "pi_unknown"}, {"status": "requires_confirmation"},
         )
         for changes in variants:
@@ -390,6 +410,40 @@ class PaymentLifecycleTests(TestCase):
         self.assertEqual(topup.status, "succeeded")
         self.assertEqual(self.user.cash_balance, Decimal("1500.00"))
         self.assertEqual(Transaction.objects.count(), 1)
+
+    def test_failed_payment_can_identify_its_attempted_card_in_the_last_error(self):
+        topup = self.make_topup()
+        event = self.event(
+            topup, kind="payment_intent.payment_failed", payment_method=None,
+            last_payment_error={
+                "type": "card_error", "code": "card_declined",
+                "payment_method": {"id": self.card.stripe_payment_method_id, "object": "payment_method"},
+            },
+        )
+        response = self.webhook(event)
+        self.assertEqual(response.status_code, 200)
+        topup.refresh_from_db()
+        self.assertEqual(topup.status, "failed")
+        self.assert_no_credit()
+
+    def test_failed_payment_with_a_different_attempted_card_is_rejected(self):
+        topup = self.make_topup()
+        event = self.event(
+            topup, kind="payment_intent.payment_failed", payment_method=None,
+            last_payment_error={"payment_method": {"id": "pm_other", "object": "payment_method"}},
+        )
+        self.assertEqual(self.webhook(event).status_code, 400)
+        topup.refresh_from_db()
+        self.assertEqual(topup.status, "pending")
+        self.assert_no_credit()
+
+    def test_failed_payment_without_a_current_payment_method_is_recorded(self):
+        topup = self.make_topup()
+        event = self.event(topup, kind="payment_intent.payment_failed", payment_method=None)
+        self.assertEqual(self.webhook(event).status_code, 200)
+        topup.refresh_from_db()
+        self.assertEqual(topup.status, "failed")
+        self.assert_no_credit()
 
     def test_unknown_event_is_acknowledged_without_touching_balances(self):
         response = self.webhook({"id": "evt_unused", "livemode": False, "type": "customer.updated", "data": {"object": {"id": "cus_owner"}}})
@@ -421,3 +475,40 @@ class PaymentLifecycleTests(TestCase):
         self.assertEqual(Transaction.objects.count(), 1)
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash_balance, Decimal("1500.00"))
+
+
+@override_settings(
+    STRIPE_SECRET_KEY="sk_test_sdk_contract_only",
+    STRIPE_PUBLISHABLE_KEY="pk_test_sdk_contract_only",
+    STRIPE_WEBHOOK_SECRET="whsec_sdk_contract_only",
+)
+class StripeSDKContractTests(SimpleTestCase):
+    def test_real_sdk_serializes_card_only_intents_and_idempotency_without_network(self):
+        from .payments import get_stripe_client, stripe_call
+
+        replies = [
+            {"id": "seti_contract", "object": "setup_intent", "livemode": False, "customer": "cus_contract"},
+            {"id": "pi_contract", "object": "payment_intent", "livemode": False, "customer": "cus_contract"},
+        ]
+        responses = [(json.dumps(reply), 200, {}) for reply in replies]
+        with patch("stripe.RequestsClient.request", side_effect=responses) as http:
+            client = get_stripe_client()
+            for resource_name, object_id in (("setup_intents", "seti_contract"), ("payment_intents", "pi_contract")):
+                params = {"customer": "cus_contract", "allowed_payment_method_types": ["card"]}
+                if resource_name == "setup_intents":
+                    params["usage"] = "on_session"
+                else:
+                    params.update({"amount": 1000, "currency": "mxn", "payment_method": "pm_contract"})
+                result = stripe_call(lambda: getattr(client.v1, resource_name).create(
+                    params, options={"idempotency_key": f"sdk-contract:{object_id}"},
+                ))
+                self.assertIsInstance(result, dict)
+                self.assertEqual(result["id"], object_id)
+                method, url, headers, body = http.call_args.args[:4]
+                self.assertEqual(method, "post")
+                self.assertEqual(url, f"https://api.stripe.com/v1/{resource_name}")
+                self.assertEqual(headers["Idempotency-Key"], f"sdk-contract:{object_id}")
+                payload = parse_qs(body)
+                self.assertEqual(payload["allowed_payment_method_types[0]"], ["card"])
+                self.assertNotIn("payment_method_types[0]", payload)
+            self.assertEqual(http.call_count, 2)

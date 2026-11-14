@@ -50,7 +50,7 @@ export async function api(path, { method = 'GET', body, signal, checkSession = t
     throw new ApiError('No pudimos conectar con el servidor. Comprueba que Django esté en ejecución e inténtalo de nuevo.', 0);
   }
   const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json') ? await response.json() : null;
+  const data = response.status !== 204 && contentType.includes('application/json') ? await response.json() : null;
   if (!response.ok) {
     const message = data?.detail || (data && Object.values(data).flat().filter((value) => typeof value === 'string').join(' ')) || 'No se pudo completar la solicitud. Inténtalo de nuevo.';
     const error = new ApiError(message, response.status, data || {});

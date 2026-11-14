@@ -28,6 +28,10 @@ RESEND_REPLY_TO_EMAIL=
 
 ## 2. Preparar dependencias y tablas
 
+En el entorno de trabajo verificado el 14 de noviembre de 2026, las dependencias ya están instaladas, la compilación está disponible y la migración `0004_stripe_payments` está aplicada en SQLite y Neon. Para comenzar las pruebas allí basta con completar las claves y seguir los pasos 3 y 4; no es necesario reinstalar las dependencias por agregar las claves.
+
+Los comandos siguientes sirven para preparar otro entorno o reconstruir la instalación si faltan archivos:
+
 Desde la raíz, en PowerShell:
 
 ```powershell
@@ -42,14 +46,30 @@ Las migraciones usan la conexión seleccionada en `.env`. Para Neon, conserva `U
 
 ## 3. Escuchar los webhooks en desarrollo
 
-Instala la [CLI oficial de Stripe](https://docs.stripe.com/cli/install). En una terminal ejecuta:
+La CLI oficial portable está preparada en `.qa/bin/stripe-cli/`. Para escuchar los eventos usando las claves del `.env`, abre una terminal desde la raíz y ejecuta:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/stripe_webhooks.py
+```
+
+Este script utiliza la clave de pruebas del `.env`, conserva la configuración de la CLI dentro de `.qa/stripe-config/` y oculta el secreto en la salida. Mantén esa terminal abierta mientras pruebas. No necesita un inicio de sesión adicional de la CLI.
+
+Si necesitas volver a obtener y guardar el secreto para ese listener:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/stripe_webhooks.py --configure
+```
+
+Después reinicia Django y ejecuta nuevamente el comando sin `--configure` para recibir los eventos.
+
+Como alternativa, si instalas [Stripe CLI](https://docs.stripe.com/cli/install) globalmente, puedes usar el flujo manual en otra terminal:
 
 ```powershell
 stripe login
 stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to http://127.0.0.1:8000/api/stripe/webhook/
 ```
 
-Selecciona el mismo entorno de pruebas que utiliza tu aplicación. Copia el secreto `whsec_...` que muestra `stripe listen` en `STRIPE_WEBHOOK_SECRET` y mantén esta terminal abierta. Reinicia Django después de cambiar las variables. Usa el secreto de ese listener local, que puede ser distinto del correspondiente a un endpoint configurado en el Dashboard.
+En el flujo manual, selecciona el mismo entorno de pruebas que utiliza tu aplicación. Copia el secreto `whsec_...` que muestra `stripe listen` en `STRIPE_WEBHOOK_SECRET` y mantén esta terminal abierta. Reinicia Django después de cambiar las variables. Usa el secreto del listener que realmente estés ejecutando, que puede ser distinto del correspondiente a un endpoint configurado en el Dashboard.
 
 Este manejador espera eventos **Snapshot**, con el objeto PaymentIntent en `data.object`. Si configuras un endpoint alojado, selecciona ese formato y su secreto correspondiente. La [documentación de webhooks](https://docs.stripe.com/webhooks?lang=python) explica la firma y el reenvío local.
 

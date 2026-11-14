@@ -330,6 +330,11 @@ def create_topup(user, card_id, amount, request_id):
         if existing:
             if existing.card_id != card_id or existing.amount != amount:
                 raise ValidationError({"detail": "Esta referencia ya corresponde a otra recarga. Inicia una operación nueva."})
+            if existing.status in {TopUp.Status.SUCCEEDED, TopUp.Status.FAILED}:
+                # A completed local request is authoritative. Retrying it must
+                # not reopen the payment or depend on Stripe retaining a card
+                # reference after a decline.
+                return {"topup": topup_data(existing), "client_secret": ""}
             topup = existing
         else:
             card = owned_card(account, card_id, lock=True)
@@ -398,10 +403,20 @@ def process_payment_event(event):
         account = User.objects.select_for_update().get(pk=original["usuario_id"])
         topup = TopUp.objects.select_for_update().select_related("card__usuario").get(pk=topup_id)
         customer_id = topup.stripe_customer_id or StripeCustomer.objects.filter(usuario=account).values_list("customer_id", flat=True).first()
+        method_id = object_id(payment.get("payment_method"))
+        if event_type == "payment_intent.payment_failed" and not method_id:
+            # A declined attempt can clear payment_method on the intent. When
+            # present, the attempted card is recorded in last_payment_error.
+            method_id = object_id((payment.get("last_payment_error") or {}).get("payment_method"))
+        method_matches = method_id == topup.card.stripe_payment_method_id
+        if event_type == "payment_intent.payment_failed" and method_id is None:
+            # A signed failure for this exact intent/customer/amount cannot
+            # credit funds; acknowledge it even if no card reference remains.
+            method_matches = True
         if (not payment_id or not topup.stripe_payment_intent_id or payment_id != topup.stripe_payment_intent_id
                 or object_id(payment.get("customer")) != customer_id or not customer_id
                 or payment.get("currency") != topup.currency or payment.get("amount") != int(topup.amount * 100)
-                or object_id(payment.get("payment_method")) != topup.card.stripe_payment_method_id):
+                or not method_matches):
             raise ValidationError({"detail": "El evento no corresponde a la recarga registrada."})
         if topup.credited_at is not None:
             return

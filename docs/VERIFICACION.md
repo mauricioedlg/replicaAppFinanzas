@@ -1,6 +1,6 @@
 # Entrega y verificación de App Finanzas Mauricio
 
-La versión web usa React, Django REST Framework y PostgreSQL mediante `DATABASE_URL`. Se conservaron los flujos del proyecto Swift y de la versión posterior documentada en el PDF. La instancia Neon configurada se verificó y actualizó en las intervenciones de acceso y catálogo BMV descritas abajo.
+La versión web usa React, Django REST Framework y PostgreSQL mediante `DATABASE_URL`. Se conservaron los flujos del proyecto Swift y de la versión posterior documentada en el PDF. La instancia Neon configurada se verificó y actualizó en las intervenciones de acceso, catálogo BMV y pagos de prueba descritas abajo.
 
 ## Funciones completadas
 
@@ -14,12 +14,14 @@ La versión web usa React, Django REST Framework y PostgreSQL mediante `DATABASE
 - Actualización de datos al navegar entre secciones y al volver a la ventana.
 - Reinicio de la interfaz cuando termina la sesión, sin conservar el diálogo de otra cuenta.
 - Interfaz móvil, tabla de portafolio desplazable y gráfica que se adapta al ancho disponible.
+- Registro de tarjetas de prueba con Stripe Elements y activación mediante código al correo de la cuenta.
+- Recargas con tarjeta verificada, confirmación por webhook firmado y comprobantes de Resend con reintentos persistentes.
 
 ## Comprobaciones realizadas
 
 | Comprobación | Resultado |
 | --- | --- |
-| Pruebas Django de autenticación, privacidad, perfil y operaciones | 24 correctas con base de pruebas SQLite |
+| Pruebas Django de autenticación, privacidad, perfil, operaciones y pagos de prueba | 120 correctas con base de pruebas SQLite; detalles en la verificación de Stripe del 14 de noviembre |
 | Compatibilidad de la API con PostgreSQL embebido | 23 pruebas correctas en la primera validación; la prueba adicional posterior verifica el límite de intentos de acceso |
 | Migraciones pendientes | Ninguna; `makemigrations --check --dry-run` correcto |
 | Configuración de producción | `check --deploy` correcto con clave propia y opciones de producción |
@@ -76,6 +78,19 @@ Este cambio no requiere migraciones adicionales. La compilación actual está en
 - Se verificó que la identidad, contraseña, preferencias y sesión de Mauricio se conservaran, al igual que los datos de la otra cuenta existente en Neon. No se enviaron correos ni órdenes reales.
 
 Consulta [las emisoras, fuentes y criterios de selección](BMV.md).
+
+## Tarjetas y recargas con Stripe · 14 de noviembre de 2026
+
+- 120 pruebas Django correctas en SQLite aislado: las 91 anteriores y 29 de pagos. Cubren autenticación y CSRF, propiedad de tarjetas, códigos de un solo uso, vencimiento, intentos, reenvíos, límites de recarga, idempotencia y recuperación ante fallos de conexión.
+- Las pruebas utilizan objetos reales del SDK Stripe 17 y validan firmas HMAC de webhooks con secretos ficticios. Una prueba intercepta el transporte HTTP del SDK para comprobar los parámetros actuales y las claves de idempotencia, sin conexiones externas.
+- Los webhooks comprueban la referencia local, cliente, tarjeta, importe, moneda y modo de pruebas antes del abono. Las notificaciones repetidas no duplican el saldo. Se verificó también el rechazo de pagos que dejan la tarjeta nula en el PaymentIntent y la consulta de recargas ya terminadas sin reabrir el pago.
+- El abono, su movimiento y el comprobante pendiente se guardan en una misma transacción. El proceso `send_payment_emails` reintenta los correos pendientes; un fallo de Resend no pierde ni repite el abono. `scripts/dev.py` inicia este proceso de forma predeterminada.
+- Navegador con React compilado y Stripe simulado: registro mediante Elements y consentimiento, código incorrecto y correcto, inicio de recarga, confirmación, espera del servidor, recuperación tras recargar la página, reintento con el mismo pago y eliminación de tarjeta con respuesta HTTP 204. Comprobado a 320, 390, 768 y 1440 píxeles, sin desbordamiento ni errores JavaScript y sin llamadas externas a Stripe.
+- Compilación React y archivos estáticos actualizados. `manage.py check` correcto y `makemigrations --check --dry-run` sin diferencias. El esquema PostgreSQL y los ejemplos se validaron con PGlite.
+- Migración `0004_stripe_payments` aplicada y verificada en la base SQLite local y en Neon. Se comprobó la conservación de cuentas, preferencias, sesiones, saldo e historial BMV. Los endpoints de configuración y tarjetas devolvieron HTTP 200 con los pagos todavía pendientes de configurar.
+- La configuración está centralizada en el `.env` de la raíz. React recibe solo la clave publicable desde Django; la integración admite exclusivamente claves de pruebas. Tras la interrupción se comprobó que el código fuente, las dependencias instaladas y los archivos compilados seguían disponibles.
+
+Las pruebas de Stripe y de correo utilizaron respuestas simuladas. Queda pendiente la prueba manual contra la cuenta del usuario después de completar `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` y `STRIPE_WEBHOOK_SECRET`, mantener activo el reenvío local de webhooks y comprobar la configuración de Resend. Consulta [la guía de configuración y pruebas](STRIPE.md).
 
 ## Alcance de los datos y de Neon
 
