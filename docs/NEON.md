@@ -2,59 +2,41 @@
 
 ## Preparar la conexión
 
-1. Crea un proyecto y una base de datos en tu cuenta de Neon. Para pruebas utiliza una rama de desarrollo.
-2. En **Connect**, selecciona la base y el rol correspondientes y copia la cadena de conexión de PostgreSQL. Conserva los parámetros de seguridad que agrega Neon, como `sslmode=require`.
-3. Copia `.env.example` a `.env` en la raíz del proyecto y asigna esa cadena a `DATABASE_URL`. No compartas el archivo `.env` ni incluyas esta cadena en el frontend.
-4. Instala las dependencias del backend siguiendo el README principal y ejecuta las migraciones:
+1. En **Connect** de Neon, selecciona la rama, base de datos y rol que usará la aplicación. Copia la cadena PostgreSQL con sus parámetros TLS.
+2. Guarda la cadena como `DATABASE_URL` en `.env`, en la raíz del proyecto. La API lee ese archivo al iniciar.
+3. Ejecuta la migración de Node.js desde la raíz.
 
 ```powershell
-.\.venv\Scripts\python.exe backend\manage.py migrate
+npm.cmd --prefix backend-node ci
+npm.cmd --prefix backend-node run migrate
 ```
 
-Las migraciones crean las tablas de negocio y las tablas de Django para sesiones, permisos y administración. No debes crear a mano las tablas de autenticación.
+La migración prepara el esquema completo en una base vacía e incorpora `app_sessions` a la base configurada que ya contiene las tablas de la aplicación. Las cuentas y sus datos de negocio se conservan. Después de migrar una instalación existente, inicia sesión de nuevo desde la aplicación.
 
-## Insertar los datos solicitados
+## Insertar los datos de ejemplo
 
-Después de `migrate`, abre el SQL Editor de Neon, selecciona la misma rama y base indicadas en `DATABASE_URL`, y ejecuta el contenido completo de `database/seed.sql`.
-
-También puedes insertar los mismos ejemplos desde Django:
+Para preparar una rama de pruebas, ejecuta lo siguiente después de migrar.
 
 ```powershell
-.\.venv\Scripts\python.exe backend\manage.py seed_demo
+npm.cmd --prefix backend-node run seed:demo
 ```
 
-El script incluye registros de las cuatro tablas de negocio:
+El comando ejecuta `database/seed.sql` dentro de una transacción y omite los símbolos que ya existen. Solo incorpora la cuenta de ejemplo y su historial si su nombre de usuario y correo están disponibles. Puedes repetir el comando y conservar los saldos y movimientos existentes.
 
-| Tabla | Ejemplos |
+| Tabla | Datos de ejemplo |
 | --- | --- |
-| `usuarios` | La cuenta `mauricioedlg` con nombre, correo y teléfono proporcionados; no tiene privilegios administrativos. |
-| `acciones` | 30 emisoras de la BMV con precios ilustrativos expresados en MXN. |
-| `portafolio` | Seis posiciones: CEMEX, Banorte, FEMSA, Walmart de México, Liverpool y Arca Continental. |
-| `transacciones` | Un depósito, seis compras y seis ventas parciales que explican el saldo y las posiciones iniciales. |
+| `usuarios` | Una cuenta con contraseña almacenada mediante PBKDF2. |
+| `acciones` | 30 emisoras BMV con precios ilustrativos en MXN. |
+| `portafolio` | Seis posiciones de ejemplo. |
+| `transacciones` | Un depósito, seis compras y seis ventas parciales. |
 
-La contraseña del usuario solicitado se almacena como un hash PBKDF2 de Django. Para iniciar sesión utiliza la contraseña de tu solicitud y el nombre de usuario o correo indicados. Los datos de ejemplo no son un respaldo de una cuenta de inversión real.
+Consulta [el catálogo BMV](BMV.md) para ver las emisoras y el saldo inicial de ejemplo.
 
-El script se ejecuta dentro de una transacción y omite los símbolos de acciones que ya existen. Solo incorpora la cuenta y su historial si el nombre de usuario y el correo no están registrados. Repetir el script no reinicia el saldo, no cambia contraseñas y no duplica operaciones. Si ya registraste una cuenta con ese usuario o correo, debes conservarla; el script no la reemplaza.
+## Comprobar el esquema y la carga
 
-Para una base que aún tiene las acciones extranjeras del catálogo anterior, usa `python backend/manage.py seed_demo --replace-with-bmv` desde la raíz. Esta conversión explícita reemplaza únicamente los ejemplos financieros de Mauricio y retira las acciones anteriores; conserva su identidad, contraseña, sesión y preferencias. Si otra cuenta tiene referencias a esas acciones, revierte toda la operación. Consulta [la actualización BMV](BMV.md). El SQL de ejemplos no realiza esta conversión.
-
-Las tablas internas de Django se llenan según su función: `migrate` registra las migraciones y prepara permisos, mientras que el inicio de sesión crea la sesión. No se insertan sesiones de ejemplo ni permisos de administrador en el SQL de negocio.
-
-## Esquema
-
-`database/schema.sql` es una referencia de las sentencias PostgreSQL generadas a partir de la migración inicial de la aplicación. Las migraciones son la fuente de verdad: para instalar la app utiliza `manage.py migrate`, y después `seed.sql`. Ejecutar manualmente el esquema y luego `migrate` en la misma base causaría conflictos por tablas existentes.
-
-La conexión real a una cuenta de Neon requiere tu propia `DATABASE_URL`; no viene incluida en el proyecto. El modo `USE_SQLITE=true` permite una prueba local explícita, pero no reemplaza la configuración PostgreSQL de la aplicación.
-
-## Comprobar la carga
-
-En el SQL Editor puedes revisar las cantidades sin exponer hashes:
+En el SQL Editor de la rama de Neon seleccionada, puedes contar los registros de negocio.
 
 ```sql
-SELECT username, nombre, email, telefono, cash_balance
-FROM usuarios
-WHERE username = 'mauricioedlg';
-
 SELECT 'acciones' AS tabla, count(*) AS registros FROM acciones
 UNION ALL
 SELECT 'portafolio', count(*) FROM portafolio
@@ -62,21 +44,4 @@ UNION ALL
 SELECT 'transacciones', count(*) FROM transacciones;
 ```
 
-En una base nueva los resultados de negocio son un usuario de ejemplo, 30 acciones, seis posiciones y 13 transacciones. Los registros creados posteriormente por el uso de la app incrementan estos totales.
-
-Documentación de referencia: [conexión de Django a Neon](https://neon.com/docs/guides/django) y [bases de datos de Django](https://docs.djangoproject.com/en/5.2/ref/databases/).
-
-## Si el acceso falla por `django_session`
-
-El mensaje `relation "django_session" does not exist` indica que faltan las migraciones de sesiones en la base seleccionada por el backend. Puede aparecer después de que Django haya aceptado la contraseña, al intentar guardar la sesión. Mantén las contraseñas como hashes; no las reemplaces por texto plano en PostgreSQL.
-
-Desde `backend/`, la instalación habitual se completa con:
-
-```powershell
-python manage.py migrate
-python manage.py seed_demo
-```
-
-Luego actualiza la página e inicia sesión. El aviso de migraciones pendientes al iniciar Django también debe desaparecer.
-
-Si `migrate` encuentra tablas que ya existen porque se ejecutó manualmente `schema.sql`, hay que verificar y conciliar ese esquema antes de registrar la migración inicial. No borres las tablas para resolver el acceso. `--fake-initial` comprueba principalmente nombres de tablas, no garantiza que coincidan columnas, relaciones, restricciones e índices; esas diferencias deben revisarse y completarse antes de usarlo. Consulta las [migraciones iniciales de Django](https://docs.djangoproject.com/en/5.2/topics/migrations/#initial-migrations).
+Una base nueva con los ejemplos tiene 30 acciones, seis posiciones y 13 transacciones. Si el servidor indica que faltan tablas, confirma que `DATABASE_URL` apunta a la base donde ejecutaste `migrate`. Para desarrollo local, el modo `--local-demo` ejecuta la misma migración en una base PGlite independiente.

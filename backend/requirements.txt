@@ -1,9 +1,0 @@
-Django>=5.2.8,<5.3
-djangorestframework>=3.16,<3.17
-dj-database-url>=3.0,<4
-django-cors-headers>=4.7,<5
-psycopg[binary]>=3.2,<4
-python-dotenv>=1.1,<2
-stripe>=17.0,<18
-whitenoise>=6.9,<7
-gunicorn>=23,<24; platform_system != "Windows"

@@ -47,7 +47,7 @@ export async function api(path, { method = 'GET', body, signal, checkSession = t
     });
   } catch (error) {
     if (error.name === 'AbortError') throw error;
-    throw new ApiError('No pudimos conectar con el servidor. Comprueba que Django esté en ejecución e inténtalo de nuevo.', 0);
+    throw new ApiError('No pudimos conectar con el servidor. Comprueba que la API esté en ejecución e inténtalo de nuevo.', 0);
   }
   const contentType = response.headers.get('content-type') || '';
   const data = response.status !== 204 && contentType.includes('application/json') ? await response.json() : null;

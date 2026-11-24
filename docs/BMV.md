@@ -6,7 +6,7 @@ Se tomó como base [la clasificación por capitalización de Stock Analysis](htt
 
 Fresnillo se incluye por su [listado directo activo en el mercado de capitales de la BMV](https://www.bmv.com.mx/es/emisoras/eventosrelevantes/FRES-7019-CGEN_CAPIT), aunque su domicilio sea extranjero. Minera Frisco se incorpora por su capitalización en TradingView y su [serie A-1 activa en BMV](https://www.bmv.com.mx/es/emisoras/informacionfinanciera/MFRISCO-7475). Se usa `SIGMAFA`, pues [Sigma Foods sustituyó la clave ALFA A por SIGMAF A](https://bmv.com.mx/docs-pub/eventemi/eventemi_1516241_1.pdf).
 
-Los símbolos unen la clave y la serie sin espacios; se conservan el ampersand y los guiones de las series correspondientes. Los precios y variaciones de `backend/core/demo.py` son **ejemplos ficticios en MXN**, no cotizaciones obtenidas de estas fuentes.
+Los símbolos unen la clave y la serie sin espacios. Se conservan el ampersand y los guiones de las series correspondientes. Los precios y variaciones de `database/seed.sql` son **ejemplos ficticios en MXN**.
 
 | Símbolo | Empresa |
 | --- | --- |
@@ -56,14 +56,12 @@ El historial contiene un depósito de $89,720.50 MXN y una compra y una venta pa
 
 Compras: $99,000.00. Ventas: $17,700.00. Saldo disponible: **$8,420.50 MXN**. Hay seis posiciones y 13 movimientos. Las fechas son relativas al día en que se cargan los ejemplos, dentro de los últimos 90 días.
 
-## Convertir el catálogo anterior
+## Cargar los ejemplos
 
-Con las dependencias instaladas y la conexión configurada en `.env`, desde la raíz:
+Prepara una [base de pruebas](NEON.md) o una [base local](../README.md#desarrollo-local). Ejecuta este comando desde la raíz.
 
 ```powershell
-.\.venv\Scripts\python.exe backend/manage.py seed_demo --replace-with-bmv
+npm.cmd --prefix backend-node run seed:demo
 ```
 
-El comando usa la misma base configurada que Django. Para la base SQLite de desarrollo se debe seleccionar explícitamente `USE_SQLITE=true`. La conversión se ejecuta en una transacción: reemplaza las posiciones y el historial del usuario de ejemplo, retira los símbolos fuera del catálogo BMV y conserva los datos de acceso, perfil, preferencias y sesión. Si el usuario y el correo identifican cuentas diferentes, o alguna otra cuenta tiene movimientos o posiciones en las acciones anteriores, se cancela sin cambios.
-
-Una vez retiradas las acciones anteriores, ejecutar de nuevo este comando no reinicia el portafolio ni duplica movimientos. `seed_demo` sin la opción conserva las cuentas existentes; `database/seed.sql` genera los mismos ejemplos para instalaciones nuevas, sin convertir datos anteriores.
+Agrega `-- --local-demo` si preparaste una base PGlite. El comando incorpora emisoras faltantes y, cuando el usuario y el correo están disponibles, crea la cuenta de ejemplo con su historial. Repetirlo conserva el portafolio y las operaciones existentes.

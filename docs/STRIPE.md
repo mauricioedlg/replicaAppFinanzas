@@ -1,8 +1,8 @@
 # Tarjetas y recargas simuladas con Stripe
 
-La aplicación registra tarjetas de crédito o débito de prueba con Stripe, solicita un código al correo del usuario antes de activarlas y permite recargar el saldo simulado con una tarjeta activa. El saldo se acredita únicamente cuando Django recibe y valida la confirmación de Stripe. Resend envía el comprobante después del abono.
+La aplicación registra tarjetas de crédito o débito de prueba con Stripe, solicita un código al correo del usuario antes de activarlas y permite recargar el saldo simulado con una tarjeta activa. El saldo se acredita cuando la API valida la confirmación de Stripe. Resend envía el comprobante después del abono.
 
-Las claves se completan manualmente; la integración no necesita credenciales durante sus pruebas automatizadas y no acepta claves de producción. Los datos completos de tarjeta se capturan mediante Stripe Elements y no se guardan en Django. La compra y venta de acciones BMV sigue usando el saldo interno de la aplicación.
+Para las pruebas manuales, configura las claves del entorno de pruebas de Stripe. Stripe Elements captura los datos completos de tarjeta y la API guarda la referencia y la terminación. La compra y venta de acciones BMV usa el saldo interno de la aplicación.
 
 ## 1. Configurar el archivo .env de la raíz
 
@@ -28,62 +28,40 @@ RESEND_REPLY_TO_EMAIL=
 
 ## 2. Preparar dependencias y tablas
 
-En el entorno de trabajo verificado el 14 de noviembre de 2026, las dependencias ya están instaladas, la compilación está disponible y la migración `0004_stripe_payments` está aplicada en SQLite y Neon. Para comenzar las pruebas allí basta con completar las claves y seguir los pasos 3 y 4; no es necesario reinstalar las dependencias por agregar las claves.
-
-Los comandos siguientes sirven para preparar otro entorno o reconstruir la instalación si faltan archivos:
-
-Desde la raíz, en PowerShell:
+Ejecuta estos comandos en PowerShell desde la raíz.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+npm.cmd --prefix backend-node ci
 npm.cmd --prefix frontend ci
-.\.venv\Scripts\python.exe backend/manage.py migrate
-npm.cmd --prefix frontend run build
-.\.venv\Scripts\python.exe backend/manage.py collectstatic --noinput
+npm.cmd --prefix backend-node run migrate
 ```
 
-Las migraciones usan la conexión seleccionada en `.env`. Para Neon, conserva `USE_SQLITE=false`. Para una base local de desarrollo, configura explícitamente `USE_SQLITE=true`. Las tablas nuevas guardan clientes Stripe, tarjetas, desafíos de correo, recargas y comprobantes pendientes; no reemplazan el catálogo ni el historial BMV existente.
+Si vas a usar la base PGlite local, agrega `-- --local-demo` al comando `migrate`. Los pagos usan tablas de clientes Stripe, tarjetas, desafíos por correo, recargas y comprobantes pendientes.
 
 ## 3. Escuchar los webhooks en desarrollo
 
-La CLI oficial portable está preparada en `.qa/bin/stripe-cli/`. Para escuchar los eventos usando las claves del `.env`, abre una terminal desde la raíz y ejecuta:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/stripe_webhooks.py
-```
-
-Este script utiliza la clave de pruebas del `.env`, conserva la configuración de la CLI dentro de `.qa/stripe-config/` y oculta el secreto en la salida. Mantén esa terminal abierta mientras pruebas. No necesita un inicio de sesión adicional de la CLI.
-
-Si necesitas volver a obtener y guardar el secreto para ese listener:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/stripe_webhooks.py --configure
-```
-
-Después reinicia Django y ejecuta nuevamente el comando sin `--configure` para recibir los eventos.
-
-Como alternativa, si instalas [Stripe CLI](https://docs.stripe.com/cli/install) globalmente, puedes usar el flujo manual en otra terminal:
+Instala Stripe CLI y ejecuta estos comandos en otra terminal. [Instalación de Stripe CLI](https://docs.stripe.com/cli/install)
 
 ```powershell
 stripe login
 stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to http://127.0.0.1:8000/api/stripe/webhook/
 ```
 
-En el flujo manual, selecciona el mismo entorno de pruebas que utiliza tu aplicación. Copia el secreto `whsec_...` que muestra `stripe listen` en `STRIPE_WEBHOOK_SECRET` y mantén esta terminal abierta. Reinicia Django después de cambiar las variables. Usa el secreto del listener que realmente estés ejecutando, que puede ser distinto del correspondiente a un endpoint configurado en el Dashboard.
+Selecciona el mismo entorno de pruebas que utiliza la aplicación. Copia el secreto `whsec_...` del listener en `STRIPE_WEBHOOK_SECRET`, deja la terminal abierta y reinicia el servidor si ya estaba en ejecución.
 
-Este manejador espera eventos **Snapshot**, con el objeto PaymentIntent en `data.object`. Si configuras un endpoint alojado, selecciona ese formato y su secreto correspondiente. La [documentación de webhooks](https://docs.stripe.com/webhooks?lang=python) explica la firma y el reenvío local.
+Este manejador espera eventos **Snapshot**, con el objeto PaymentIntent en `data.object`. Si configuras un endpoint alojado, selecciona ese formato y su secreto correspondiente. Consulta [la documentación de webhooks](https://docs.stripe.com/webhooks?lang=node).
 
 ## 4. Iniciar la aplicación
 
 En otra terminal, desde la raíz:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/dev.py
+npm.cmd --prefix backend-node run dev
 ```
 
-Abre `http://127.0.0.1:5173`. Este comando inicia Django en el puerto 8000, React en el 5173 y el proceso de reintentos de correos de recargas. Para servir la compilación desde Django puedes añadir `--built` y abrir `http://127.0.0.1:8000`.
+Abre `http://127.0.0.1:5173`. El comando inicia la API Node.js en el puerto 8000, React en el 5173 y el proceso de reintentos de correos de recargas.
 
-El indicador `--local-demo` selecciona SQLite independientemente de la conexión Neon. `--no-payment-worker` permite iniciar solo los servidores si ya ejecutas el proceso de correos por separado.
+Agrega `-- --local-demo` para usar la base PGlite que preparaste. Si ya compilaste React, `npm.cmd --prefix backend-node start` sirve la aplicación y la API en el puerto 8000.
 
 ## 5. Agregar y verificar una tarjeta
 
@@ -114,19 +92,7 @@ Cuando llega la confirmación válida de Stripe, el servidor acredita el saldo u
 
 ## 7. Reintentar correos pendientes
 
-`scripts/dev.py` ya inicia este proceso. Para ejecutarlo manualmente una vez:
-
-```powershell
-.\.venv\Scripts\python.exe backend/manage.py send_payment_emails
-```
-
-Para mantenerlo activo:
-
-```powershell
-.\.venv\Scripts\python.exe backend/manage.py send_payment_emails --watch --interval 10
-```
-
-En un entorno alojado, ejecuta el proceso persistente o programa el comando periódicamente. La notificación pendiente se guarda junto con el abono y se reintenta sin volver a acreditar el saldo.
+El servidor revisa los comprobantes pendientes en segundo plano. La notificación se guarda en la misma transacción que el abono, y cada reintento de envío conserva la referencia de la recarga. Mantén `RUN_PAYMENT_EMAIL_WORKER=true` en una instancia de la API para que procese los correos.
 
 ## Puntos de integración
 
@@ -146,11 +112,12 @@ Los endpoints del usuario conservan autenticación por sesión y CSRF. Solo el w
 
 ## Si una prueba no termina
 
-- **Pagos no disponibles:** revisa las tres variables de Stripe, que sean del entorno de pruebas y que hayas reiniciado Django.
+- **Pagos no disponibles.** Revisa que las tres variables de Stripe pertenezcan al entorno de pruebas y reinicia la API.
 - **No llega el código:** comprueba Resend y el correo de la cuenta. No se activa la tarjeta sin confirmar el código.
-- **Recarga pendiente:** revisa que `stripe listen` siga activo, que reenvíe al puerto 8000 y que Django use su secreto `whsec_` actual. La redirección del navegador no acredita fondos.
+- **Recarga pendiente.** Revisa que `stripe listen` siga activo, que reenvíe al puerto 8000 y que la API use el secreto `whsec_` actual.
 - **Firma de webhook rechazada:** revisa el secreto del listener o del endpoint que realmente emitió la notificación y el formato Snapshot.
-- **Comprobante pendiente:** conserva el proceso `send_payment_emails` activo y revisa la configuración de correo.
-- **Tablas inexistentes:** ejecuta `manage.py migrate` sobre la misma base que usa el servidor.
+- **Comprobante pendiente.** Mantén activo el proceso de correo de la API y revisa la configuración de Resend.
+- **Tablas inexistentes.** Ejecuta `npm.cmd --prefix backend-node run migrate` sobre la misma base que usa el servidor.
+- **Error al cargar el SDK de Stripe.** Ejecuta `npm.cmd --prefix backend-node ci` para instalar las dependencias de la API.
 
 Las pruebas automatizadas de la integración utilizan respuestas simuladas de Stripe y Resend y no realizan pagos ni envíos reales. La prueba manual con tu cuenta queda pendiente hasta que completes las claves.

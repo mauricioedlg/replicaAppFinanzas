@@ -1,7 +1,7 @@
 -- Folio: datos de ejemplo para PostgreSQL / Neon.
--- Requisito: ejecutar primero python backend/manage.py migrate.
+-- Requisito: ejecutar primero npm run migrate en backend-node.
 -- Precios ficticios en MXN; las operaciones no son inversiones reales.
--- La cuenta usa un hash PBKDF2 de Django, sin contraseña en texto plano.
+-- La cuenta usa un hash PBKDF2.
 -- Se preservan los símbolos existentes y las cuentas ya registradas.
 BEGIN;
 
@@ -46,8 +46,8 @@ DO $folio_seed$
 DECLARE
     demo_user_id bigint;
 BEGIN
-    INSERT INTO "usuarios" ("password", "last_login", "is_superuser", "username", "first_name", "last_name", "email", "is_staff", "is_active", "date_joined", "nombre", "telefono", "cash_balance", "notifications", "dark_mode", "active_session_key")
-    VALUES ('pbkdf2_sha256$1000000$JxGTt_D_ayKsN2KGpm-W5A$dnUUzm0RoJ701ob9uxE3SLMmzsw1QLsR/YV6qpZnVIU=', NULL, false, 'mauricioedlg', '', '', 'mauricioestrada580@gmail.com', false, true, CURRENT_TIMESTAMP, 'Mauricio Estrada De la Garza', '81 2622 8609', 8420.50, true, false, '')
+    INSERT INTO "usuarios" ("password", "username", "email", "is_active", "date_joined", "nombre", "telefono", "cash_balance", "notifications", "dark_mode")
+    VALUES ('pbkdf2_sha256$1000000$JxGTt_D_ayKsN2KGpm-W5A$dnUUzm0RoJ701ob9uxE3SLMmzsw1QLsR/YV6qpZnVIU=', 'mauricioedlg', 'mauricioestrada580@gmail.com', true, CURRENT_TIMESTAMP, 'Mauricio Estrada De la Garza', '81 2622 8609', 8420.50, true, false)
     ON CONFLICT DO NOTHING RETURNING "id" INTO demo_user_id;
 
     IF demo_user_id IS NULL THEN

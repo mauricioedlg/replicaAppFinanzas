@@ -1,6 +1,6 @@
 # De SwiftUI a App Finanzas Mauricio web
 
-La implementación conserva las cinco áreas de la app de iOS: inicio, portafolio, inversión, transacciones y configuración, además del registro y el inicio de sesión. Los archivos ZIP y el PDF se usan como referencia del proyecto anterior; las instrucciones académicas del PDF no sustituyen la solicitud de implementar una versión web con React, Django y PostgreSQL en Neon.
+La aplicación web usa React, Node.js y PostgreSQL en Neon. Conserva las cinco áreas de la app de iOS, además del registro y el inicio de sesión. Los archivos ZIP y el PDF son la referencia funcional.
 
 Las referencias contienen dos estados distintos del proyecto. El ZIP de Swift tiene listas y cifras locales; el PDF de 41 páginas documenta una versión posterior que llama una API, compra desde Invertir y vende desde Portafolio. La adaptación conserva también estos flujos posteriores. La página 9 del PDF enumera las nueve pantallas, incluidas las vistas de compra y venta; las páginas 10 y 11 describen las cuatro tablas de MySQL. Se reemplaza esa infraestructura por PostgreSQL en Neon según la solicitud actual.
 
@@ -8,7 +8,7 @@ Las referencias contienen dos estados distintos del proyecto. El ZIP de Swift ti
 
 | Proyecto SwiftUI | Versión web | Cambio |
 | --- | --- | --- |
-| `LoginView` y `RegistroView` | Acceso y registro | Los usuarios se guardan en PostgreSQL; Django verifica hashes de contraseña y mantiene una sesión por cookie. |
+| `LoginView` y `RegistroView` | Acceso y registro | La API comprueba las contraseñas mediante hashes y mantiene una sesión por cookie. |
 | `ContentView` | Navegación adaptable | Las mismas secciones quedan disponibles en escritorio y móvil. |
 | `InicioView` | Inicio | El saludo utiliza el nombre del usuario autenticado; las cifras proceden de su cuenta. |
 | `PortafolioView` y `PieChartView` | Portafolio | La distribución y los rendimientos se calculan con las posiciones y los precios de ejemplo, en lugar de porcentajes constantes. |
@@ -23,15 +23,15 @@ Las empresas, los precios y los movimientos iniciales son ejemplos para probar l
 
 El rendimiento de las posiciones compara su valor con su costo de adquisición. La serie del historial muestra el importe acumulado de compras menos ventas a partir de transacciones guardadas; no representa una serie de precios de mercado ni permite deducir rendimientos históricos.
 
-El modelo anterior declaraba `managed = False`, por lo que sus migraciones no administraban las tablas indicadas en los modelos. La versión web utiliza modelos administrados y migraciones de Django para crear un esquema reproducible. Las cuatro tablas de negocio siguen representando usuarios, acciones, portafolio y transacciones; el portafolio guarda cantidades y costo de adquisición, y su porcentaje se obtiene al calcular la valuación.
+El comando `npm.cmd --prefix backend-node run migrate` prepara el esquema. Las cuatro tablas de negocio representan usuarios, acciones, portafolio y transacciones. El portafolio guarda cantidades y costo de adquisición, y su porcentaje se obtiene al calcular la valuación.
 
 Los cálculos de dinero y cantidades se hacen con valores decimales en el servidor. La compra o venta actualiza saldo, posición e historial dentro de una transacción de base de datos. Las validaciones del servidor impiden invertir más efectivo del disponible o vender más títulos de los que posee el usuario.
 
 ## Autenticación y privacidad
 
-El ZIP de Swift verificaba usuarios de una lista en memoria y el backend anterior exponía conjuntos completos de usuarios y operaciones. El `APIService` del PDF buscaba coincidencias por correo sin verificar la contraseña y filtraba algunas operaciones en el cliente. La versión web verifica la contraseña en Django y limita las consultas de posiciones e historial al usuario de la sesión, dentro del servidor. La contraseña no forma parte de las respuestas de la API.
+La versión web verifica la contraseña en el servidor y limita las consultas de posiciones e historial al usuario de la sesión.
 
-El usuario de Mauricio se incluye en los datos de ejemplo con nombre, correo, nombre de usuario y teléfono solicitados. Su contraseña se guarda como un hash PBKDF2 compatible con Django; el script de datos no contiene la contraseña en texto plano. Este usuario es una cuenta de la aplicación y no recibe permisos de administrador.
+El usuario de Mauricio se incluye en los datos de ejemplo con nombre, correo, nombre de usuario y teléfono solicitados. Su contraseña se guarda como un hash PBKDF2.
 
 Las credenciales de Neon pertenecen únicamente al backend y se leen desde `DATABASE_URL`. No deben colocarse en variables `VITE_*`, porque esas variables terminan en el JavaScript enviado al navegador. La conexión a Neon conserva TLS mediante los parámetros de su cadena de conexión.
 

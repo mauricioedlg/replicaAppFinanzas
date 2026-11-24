@@ -6,7 +6,7 @@ Cada acceso que comienza sin una sesión válida requiere contraseña y un códi
 
 1. El usuario escribe su correo o usuario y contraseña. Si son correctos, Resend envía un código de seis dígitos al correo registrado.
 2. La aplicación muestra **Confirma que eres tú**. Antes de validar el código no permite consultar saldos, inversiones ni datos de perfil.
-3. Después de verificar el código, Django crea la sesión autenticada y devuelve una cookie HttpOnly. La contraseña y el código no se guardan en el navegador.
+3. Después de verificar el código, la API crea la sesión autenticada y devuelve una cookie HttpOnly. La contraseña y el código no se guardan en el navegador.
 4. El navegador conserva la cookie al cerrar y abrir la ventana. La aplicación recupera la cuenta automáticamente mientras esa sesión siga vigente.
 5. Al confirmar un acceso desde otro navegador o dispositivo, el servidor revoca la sesión anterior. Pedir el código en otro dispositivo todavía no la revoca.
 
@@ -14,7 +14,7 @@ El registro también pide verificar el correo antes de dar acceso. Se conserva l
 
 ## Cookie y duración
 
-La cookie solo contiene un identificador de sesión. Los datos de autenticación se guardan en la base de Django, siguiendo su [sistema oficial de sesiones](https://docs.djangoproject.com/en/5.2/topics/http/sessions/). Es HttpOnly, usa SameSite=Lax y se envía únicamente por HTTPS en producción.
+La cookie contiene un identificador de sesión. El servidor conserva la sesión en PostgreSQL. La cookie usa HttpOnly y SameSite=Lax y, en producción, se envía únicamente por HTTPS.
 
 `LOGIN_SESSION_DAYS=365` en `.env` establece una duración renovable de un año. Cada uso renueva ese plazo; cerrar el navegador no cierra la sesión. El usuario deberá entrar de nuevo si borra las cookies o deja pasar la vigencia completa sin usar la aplicación. Esta duración es configurable y no representa una cookie permanente sin caducidad.
 
@@ -31,15 +31,15 @@ Solo se conserva una sesión activa de la aplicación por cuenta. Varias pestañ
 
 ## Configurar y ejecutar
 
-Se usan `RESEND_API_KEY`, `RESEND_FROM_EMAIL` y, opcionalmente, `RESEND_REPLY_TO_EMAIL` del `.env` existente. Las plantillas están en `backend/core/emails.py`. Consulta [la configuración de Resend](RECUPERACION.md) si necesitas cambiarlas.
+Se usan `RESEND_API_KEY`, `RESEND_FROM_EMAIL` y, opcionalmente, `RESEND_REPLY_TO_EMAIL` del `.env` existente. Las plantillas están en `backend-node/auth.js`. Consulta [la configuración de Resend](RECUPERACION.md) para preparar el remitente.
 
-Para otra instalación del proyecto:
+Con las dependencias instaladas, ejecuta estos comandos desde la raíz.
 
 ```powershell
-.\.venv\Scripts\python.exe backend/manage.py migrate
-npm.cmd --prefix frontend run build -- --configLoader runner
+npm.cmd --prefix backend-node run migrate
+npm.cmd --prefix backend-node run dev
 ```
 
-Reinicia Django después de actualizar el código o `.env`. Las sesiones anteriores a esta implementación deben verificarse de nuevo antes de acceder a la API; los usuarios y sus inversiones se conservan.
+Reinicia el servidor después de actualizar `.env`. En una instalación existente, vuelve a iniciar sesión al estrenar el nuevo almacenamiento de sesiones. Se conservan las cuentas y sus inversiones.
 
 Las pruebas automatizadas usan una base aislada y Resend simulado. No envían códigos reales ni requieren acceso a un buzón.
