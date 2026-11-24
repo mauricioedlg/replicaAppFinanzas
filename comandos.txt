@@ -1,0 +1,5 @@
+
+
+Comando para arrancar proyecto: npm.cmd --prefix backend-node run dev
+
+Movimientos stripe: stripe.cmd listen --events "payment_intent.succeeded,payment_intent.payment_failed" --forward-to http://127.0.0.1:8000/api/stripe/webhook/
