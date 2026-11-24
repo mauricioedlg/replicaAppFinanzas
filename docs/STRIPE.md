@@ -90,6 +90,10 @@ La interfaz espera la confirmación del servidor. Si el evento tarda, muestra la
 
 Cuando llega la confirmación válida de Stripe, el servidor acredita el saldo una sola vez, registra el movimiento y prepara el correo con el importe, la terminación de la tarjeta y la referencia. El mensaje identifica el pago como simulado. Un fallo del envío no revierte ni repite el abono.
 
+### Retirar saldo de forma simulada
+
+En **Inicio → Retirar fondos**, elige una tarjeta guardada que ya usaste en una recarga acreditada. Introduce un importe en MXN hasta el saldo disponible, revisa y confirma. El importe se descuenta del saldo simulado y la app muestra la tarjeta enmascarada y la referencia del retiro. El movimiento se consulta en **Transacciones → Retiros**. La simulación se ejecuta dentro de la app. Los eventos de Stripe CLI corresponden a las recargas de prueba.
+
 ## 7. Reintentar correos pendientes
 
 El servidor revisa los comprobantes pendientes en segundo plano. La notificación se guarda en la misma transacción que el abono, y cada reintento de envío conserva la referencia de la recarga. Mantén `RUN_PAYMENT_EMAIL_WORKER=true` en una instancia de la API para que procese los correos.
@@ -106,6 +110,8 @@ El servidor revisa los comprobantes pendientes en segundo plano. La notificació
 | `DELETE /api/cards/{id}/` | Deshabilitar una tarjeta conservando el historial. |
 | `POST /api/funds/` | Iniciar una recarga; no acredita saldo directamente. |
 | `GET /api/funds/{id}/` | Consultar la recarga y el saldo confirmado. |
+| `GET /api/withdrawals/` | Consultar saldo disponible y tarjetas con recargas acreditadas. |
+| `POST /api/withdrawals/` | Confirmar un retiro simulado y registrar el movimiento. |
 | `POST /api/stripe/webhook/` | Recibir eventos firmados de Stripe sin sesión de navegador. |
 
 Los endpoints del usuario conservan autenticación por sesión y CSRF. Solo el webhook está exento de CSRF y exige en su lugar una firma válida de Stripe. Se comprueban el cliente, tarjeta, importe, moneda y referencia local antes de acreditar. La recarga y su PaymentIntent están vinculados de forma única para evitar duplicados.

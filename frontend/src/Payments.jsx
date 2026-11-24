@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js/pure';
-import { AlertCircle, Check, CirclePlus, CreditCard, LoaderCircle, Mail, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { AlertCircle, ArrowUpFromLine, Check, CirclePlus, CreditCard, LoaderCircle, Mail, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { api } from './api';
 
 const MONEY = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-const money = (value) => MONEY.format(Number(value || 0));
+const money = (value) => MONEY.format(value || 0);
 const stripeClients = new Map();
 const uuidPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+export function decimalUnits(value, places) {
+  const match = String(value ?? '').match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match || (match[2]?.length || 0) > places) return null;
+  return BigInt(match[1]) * (10n ** BigInt(places)) + BigInt((match[2] || '').padEnd(places, '0') || '0');
+}
+
+function decimalAmount(cents) {
+  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+}
 
 function stripeFor(key) {
   if (!stripeClients.has(key)) stripeClients.set(key, loadStripe(key).then((stripe) => {
@@ -210,17 +220,19 @@ export function CardManager({ user, Modal }) {
   </section>;
 }
 
-function attemptStorageKey(userId) { return `folio:stripe:topup:${userId}`; }
-function readAttempt(userId) {
+function attemptStorageKey(userId, kind) {
+  return kind === 'withdrawal' ? `folio:withdrawal:${userId}` : `folio:stripe:topup:${userId}`;
+}
+function readAttempt(userId, kind) {
   try {
-    const value = JSON.parse(sessionStorage.getItem(attemptStorageKey(userId)) || 'null');
+    const value = JSON.parse(sessionStorage.getItem(attemptStorageKey(userId, kind)) || 'null');
     return value && uuidPattern.test(value.request_id) && (!value.topup_id || uuidPattern.test(value.topup_id)) ? value : null;
   } catch { return null; }
 }
-function storeAttempt(userId, value) {
+function storeAttempt(userId, value, kind) {
   try {
-    if (value) sessionStorage.setItem(attemptStorageKey(userId), JSON.stringify(value));
-    else sessionStorage.removeItem(attemptStorageKey(userId));
+    if (value) sessionStorage.setItem(attemptStorageKey(userId, kind), JSON.stringify(value));
+    else sessionStorage.removeItem(attemptStorageKey(userId, kind));
   } catch { /* The in-memory request still prevents duplicate submissions. */ }
 }
 
@@ -339,6 +351,124 @@ export function StripeFundsModal({ userId, balance, Modal, onClose, onComplete, 
         <button type="button" className="text-button payment-resend" onClick={onManageCards} disabled={busy}>Administrar mis tarjetas</button>
       </form>}
       {loadError && <button type="button" className="text-button" onClick={reload}>Volver a cargar</button>}
+    </>}
+  </Modal>;
+}
+
+export function WithdrawalModal({ userId, Modal, onClose, onComplete, onAddFunds, onViewTransactions }) {
+  const [saved] = useState(() => readAttempt(userId, 'withdrawal'));
+  const attempt = useRef(saved);
+  const submission = useRef(null);
+  const [resources, setResources] = useState(null);
+  const [retry, setRetry] = useState(0);
+  const [loadError, setLoadError] = useState('');
+  const [amount, setAmount] = useState(saved?.amount || '');
+  const [cardId, setCardId] = useState(saved?.card_id || '');
+  const [reviewing, setReviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [receipt, setReceipt] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api('/withdrawals/', { signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return;
+      setResources(result);
+      setCardId((id) => result.cards.some((card) => card.id === id) || attempt.current?.card_id === id ? id : result.cards[0]?.id || '');
+    }).catch((failure) => {
+      if (!controller.signal.aborted && !failure.sessionExpired) setLoadError(failure.message);
+    });
+    return () => controller.abort();
+  }, [retry]);
+  useEffect(() => () => submission.current?.abort(), []);
+
+  const cents = decimalUnits(amount.replace(',', '.'), 2);
+  const available = decimalUnits(resources?.cash_balance, 2) ?? 0n;
+  const requestAmount = cents !== null ? decimalAmount(cents) : '';
+  const sameAttempt = attempt.current?.amount === requestAmount && attempt.current.card_id === cardId;
+  const cards = resources?.cards ?? [];
+  const savedCard = sameAttempt ? attempt.current.card : null;
+  const choices = savedCard && !cards.some((card) => card.id === savedCard.id) ? [...cards, savedCard] : cards;
+  const card = choices.find((item) => item.id === cardId);
+  const overBalance = cents !== null && cents > available;
+  const valid = card && cents !== null && cents > 0n && (!overBalance || sameAttempt);
+
+  function clearAttempt() {
+    attempt.current = null;
+    storeAttempt(userId, null, 'withdrawal');
+  }
+
+  function changeAmount(value) {
+    if (value === amount) return;
+    clearAttempt();
+    setAmount(value);
+    setError('');
+  }
+
+  function changeCard(id) {
+    clearAttempt();
+    setCardId(id);
+    setError('');
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!valid || submission.current) return;
+    setError('');
+    if (!reviewing) { setReviewing(true); return; }
+
+    const body = sameAttempt ? attempt.current : { request_id: crypto.randomUUID(), amount: requestAmount, card_id: card.id, card };
+    attempt.current = body;
+    storeAttempt(userId, body, 'withdrawal');
+    const controller = new AbortController();
+    submission.current = controller;
+    setBusy(true);
+    try {
+      const result = await api('/withdrawals/', { method: 'POST', body: { request_id: body.request_id, amount: body.amount, card_id: body.card_id }, signal: controller.signal });
+      if (controller.signal.aborted) return;
+      clearAttempt();
+      setReceipt(result);
+      onComplete();
+    } catch (failure) {
+      if (!controller.signal.aborted && !failure.sessionExpired) setError(failure.message);
+    } finally {
+      submission.current = null;
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+
+  return <Modal title={receipt ? 'Retiro simulado completado' : 'Retirar fondos'} subtitle="Simulación de envío a tu tarjeta de prueba" onClose={onClose} busy={busy}>
+    {receipt ? <div className="payment-pending">
+      <span className="payment-code-icon"><Check size={25} /></span>
+      <h3>{money(receipt.withdrawal.amount)} MXN · {cardLabel(receipt.withdrawal.card)}</h3>
+      <p>Nuevo saldo disponible: {money(receipt.cash_balance)} MXN.</p>
+      <p className="withdrawal-reference">Referencia: {receipt.withdrawal.id}</p>
+      <button type="button" className="button button-primary full-width withdrawal-done" onClick={onViewTransactions}>Ver movimientos</button>
+    </div> : loadError ? <><Notice error>{loadError}</Notice><button type="button" className="button button-outline full-width" onClick={() => { setLoadError(''); setRetry((value) => value + 1); }}>Volver a cargar</button></> : !resources ? <Loading>Consultando saldo y tarjetas…</Loading> : <>
+      <div className="funds-balance"><Wallet size={23} /><span>Saldo disponible<strong>{money(resources.cash_balance)} MXN</strong></span></div>
+      {!choices.length ? <div className="payment-empty"><p>Haz una recarga de prueba para usar esa misma tarjeta como destino de tu retiro simulado.</p><button type="button" className="button button-primary" onClick={onAddFunds}><CirclePlus size={17} /> Agregar fondos</button></div> : available === 0n && !sameAttempt ? <Notice>Tu saldo disponible para retirar es de $0.00 MXN.</Notice> : <form className="payment-form" onSubmit={submit}>
+        {reviewing ? <div className="trade-summary withdrawal-summary">
+          <div><span>Tarjeta de destino</span><strong>{cardLabel(card)}</strong></div>
+          {!overBalance && <div><span>Saldo después del retiro</span><strong>{money(decimalAmount(available - cents))} MXN</strong></div>}
+          <div><span>Importe del retiro</span><strong>{money(requestAmount)} MXN</strong></div>
+        </div> : <>
+          <label className="payment-card-select">Tarjeta de destino
+            <select value={cardId} onChange={(event) => changeCard(event.target.value)} required>
+              {choices.map((item) => <option key={item.id} value={item.id}>{cardLabel(item)}</option>)}
+            </select>
+          </label>
+          <label className="trade-quantity">Monto a retirar (MXN)
+            <input inputMode="decimal" maxLength={19} value={amount} onChange={(event) => changeAmount(event.target.value)} required />
+          </label>
+          <button type="button" className="text-button withdrawal-maximum" onClick={() => changeAmount(decimalAmount(available))}>Usar saldo disponible</button>
+          {amount && cents === null && <Notice error>Ingresa un importe con hasta dos decimales.</Notice>}
+          {overBalance && !sameAttempt && <Notice error>El importe supera tu saldo disponible.</Notice>}
+        </>}
+        <Notice error>{error}</Notice>
+        <p className="trade-disclaimer"><ShieldCheck size={17} /> El retiro se registra en el saldo simulado de tu cuenta.</p>
+        <button className="button button-primary full-width" disabled={!valid || busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUpFromLine size={18} />} {reviewing ? 'Confirmar retiro simulado' : 'Revisar retiro'}</button>
+        {reviewing && <button type="button" className="text-button payment-resend" disabled={busy} onClick={() => { setReviewing(false); setError(''); }}>Editar retiro</button>}
+      </form>}
     </>}
   </Modal>;
 }

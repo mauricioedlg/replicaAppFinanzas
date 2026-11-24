@@ -130,7 +130,9 @@ async function transactionsFor(db, userId, query = {}, recent = false) {
   const type = queryParam(query, 'type');
   const search = queryParam(query, 'search').trim();
   if (type) {
-    if (!['buy', 'sell', 'deposit'].includes(type)) throw new ApiError(400, { type: ['Tipo de movimiento inválido.'] });
+    if (!['buy', 'sell', 'deposit', 'withdrawal'].includes(type)) {
+      throw new ApiError(400, { type: ['Tipo de movimiento inválido.'] });
+    }
     parameters.push(type);
     conditions.push(`t.tipo = $${parameters.length}`);
   }

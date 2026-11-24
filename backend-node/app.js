@@ -9,6 +9,7 @@ import { createEmail } from './email.js';
 import { mountFinance } from './finance.js';
 import { mountPayments } from './payments.js';
 import { createSessions } from './sessions.js';
+import { mountWithdrawals } from './withdrawals.js';
 
 const frontend = fileURLToPath(new URL('../frontend/dist/', import.meta.url));
 const index = fileURLToPath(new URL('../frontend/dist/index.html', import.meta.url));
@@ -121,6 +122,7 @@ export function createApp({ db, config, email = createEmail(config), stripe = cr
   mountAuth(app, context);
   mountFinance(app, context);
   mountPayments(app, context);
+  mountWithdrawals(app, context);
   app.use('/api', (req, res) => res.status(404).json({ detail: 'Ruta de API no encontrada.' }));
 
   app.use('/static', express.static(frontend, { index: false, fallthrough: false }));

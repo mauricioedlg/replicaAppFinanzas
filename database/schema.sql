@@ -1,5 +1,5 @@
 -- App Finanzas: esquema de negocio PostgreSQL.
--- npm run migrate aplica este archivo y sessions.sql en una base vacía.
+-- npm run migrate aplica este archivo y las extensiones de sesiones y retiros en una base vacía.
 
 --
 -- Create model User

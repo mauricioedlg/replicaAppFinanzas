@@ -5,14 +5,17 @@ import pg from 'pg';
 import { loadConfig } from './config.js';
 
 const schemaFile = new URL('../database/schema.sql', import.meta.url);
-const sessionsFile = new URL('../database/sessions.sql', import.meta.url);
 const seedFile = new URL('../database/seed.sql', import.meta.url);
 const businessTables = [
   'usuarios', 'acciones', 'portafolio', 'transacciones',
   'login_challenges', 'password_reset_challenges', 'stripe_customers',
   'payment_cards', 'card_verifications', 'payment_topups', 'payment_email_outbox',
 ];
-const tables = [...businessTables, 'app_sessions'];
+const extensions = [
+  ['app_sessions', new URL('../database/sessions.sql', import.meta.url)],
+  ['payment_withdrawals', new URL('../database/withdrawals.sql', import.meta.url)],
+];
+const tables = [...businessTables, ...extensions.map(([table]) => table)];
 const existingUserDefaults = new Map([
   ['first_name', "''"], ['last_name', "''"],
   ['is_staff', 'false'], ['is_superuser', 'false'], ['active_session_key', "''"],
@@ -116,11 +119,11 @@ export async function migrate(db) {
     const installed = await installedTables(tx);
     if (installed.size) assertTables(installed, businessTables);
     else await tx.exec(await readFile(schemaFile, 'utf8'));
-    const needsSessions = !installed.has('app_sessions');
-    if (needsSessions) await tx.exec(await readFile(sessionsFile, 'utf8'));
+    const missingExtensions = extensions.filter(([table]) => !installed.has(table));
+    for (const [, file] of missingExtensions) await tx.exec(await readFile(file, 'utf8'));
     const changedDefaults = await allowExistingUserTables(tx);
     await assertSchema(tx);
-    return needsSessions || changedDefaults;
+    return missingExtensions.length > 0 || changedDefaults;
   });
 }
 

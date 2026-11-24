@@ -200,6 +200,7 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 .heading-dot { color: #6f8d4c; }
 .page-heading p { margin-top: 6px; font-size: 13px; color: var(--muted); line-height: 1.8; }
 .page-heading > .button { margin-top: 14px; }
+.dashboard-funds-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
 .card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 22px 23px 17px; }
 .card h2, .card-header h2 { font-size: 16px; font-weight: 650; letter-spacing: -.3px; line-height: 1.5; }
@@ -281,6 +282,7 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 .transaction-buy { background: var(--green-light); color: #6c8a52; }
 .transaction-sell { background: #f4ece0; color: #b79b6f; }
 .transaction-deposit { background: #e8eef0; color: #7c9da7; }
+.transaction-withdrawal, .type-withdrawal { background: #f5e9e4; color: #8b5544; }
 .transaction-name { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
 .transaction-name strong { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .transaction-name > span { font-size: 11px; color: var(--muted); }
@@ -467,6 +469,10 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 .payment-pending > p { color: var(--secondary); font-size: 13px; line-height: 1.9; margin-top: 15px; }
 .payment-pending .payment-notice { text-align: left; }
 .payment-resume { margin-bottom: 12px; }
+.withdrawal-summary { margin-top: 0; }
+.withdrawal-maximum { align-self: flex-start; margin-top: 10px; }
+.withdrawal-reference { overflow-wrap: anywhere; }
+.withdrawal-done { margin-top: 22px; }
 @media (max-width: 480px) {
   .payments-card { padding: 18px; }
   .payments-card .payment-card-actions > .button { width: 100%; white-space: normal; }
@@ -537,6 +543,7 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 :root[data-theme='dark'] .growth-circles, :root[data-theme='dark'] .growth-circles i { border-color: #3c4b35; }
 :root[data-theme='dark'] .transaction-sell, :root[data-theme='dark'] .type-sell { background: #443c2d; }
 :root[data-theme='dark'] .transaction-deposit, :root[data-theme='dark'] .type-deposit { background: #2b3f41; }
+:root[data-theme='dark'] .transaction-withdrawal, :root[data-theme='dark'] .type-withdrawal { background: #463630; color: #e3b4a5; }
 :root[data-theme='dark'] .error-notice { background: #4b302c; border-color: #75463e; color: #efb0a6; }
 :root[data-theme='dark'] .error-notice .text-button { color: #efb0a6; }
 
@@ -728,6 +735,7 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
   .page-heading .eyebrow { font-size: 11px; margin-bottom: 11px; }
   .page-heading p { font-size: 12px; line-height: 1.8; max-width: 300px; }
   .page-heading > .button { margin-top: 0; font-size: 12px; padding: 9px 12px; min-height: 37px; }
+  .dashboard-funds-actions { justify-content: flex-start; margin-top: 0; }
   .dashboard-top { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .wealth-card { padding: 21px 22px 16px; }
   .wealth-total { font-size: 38px; margin-top: 9px; }

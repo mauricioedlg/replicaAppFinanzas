@@ -33,6 +33,7 @@ npm.cmd --prefix backend-node run dev -- --local-demo
 
 - Configura `RESEND_API_KEY` y `RESEND_FROM_EMAIL` para recibir los códigos de [acceso y registro](docs/ACCESO.md), [recuperación de contraseña](docs/RECUPERACION.md) y activación de tarjetas.
 - Para [tarjetas y recargas con Stripe](docs/STRIPE.md), usa `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` y `STRIPE_WEBHOOK_SECRET` del entorno de pruebas. La API acredita el saldo al verificar el webhook y reintenta los comprobantes pendientes por correo.
+- Desde **Inicio → Retirar fondos**, puedes simular un retiro de tu saldo disponible a una tarjeta que ya usaste en una recarga acreditada. La app muestra la referencia y registra el retiro en **Transacciones**.
 - El portafolio, el historial y las preferencias se guardan por cuenta. Desde el historial puedes filtrar movimientos y exportarlos en CSV.
 
 ## Servir la compilación de React
